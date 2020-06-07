@@ -44,6 +44,8 @@ func (f *factory) createRoute(name string, path string, action Action, options R
 		requiredParams:     required,
 		paramsRequirements: requirements,
 		defaultParams:      defaults,
+		paramMatcher:       f.paramMatcher,
+		requirement:        f.requirement,
 	}, nil
 }
 

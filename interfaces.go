@@ -51,6 +51,7 @@ type RouteGroupOptions struct {
 type Route interface {
 	Priority() int
 	Name() string
+	Path() string
 	URL(params ParamsMap) (*url.URL, error)
 	ExtractParams(request *http.Request) (ParamsMap, error)
 }

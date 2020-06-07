@@ -90,7 +90,7 @@ func (g *routeGroup) AddRouteGroup(name string, path string, options RouteGroupO
 }
 
 func (g *routeGroup) findRouteByRequest(request *http.Request) (Route, bool) {
-	if request.URL == nil {
+	if request == nil || request.URL == nil {
 		return nil, false
 	}
 
