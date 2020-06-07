@@ -17,7 +17,8 @@ type route struct {
 	action             Action
 	priority           int
 	method             string
-	domain             string
+	secure             bool
+	host               string
 	forwardRegexp      *regexp.Regexp
 	reversePath        string
 	requiredParams     paramsList
@@ -26,17 +27,22 @@ type route struct {
 }
 
 var _ Route = &route{}
+var _ routeFinder = &route{}
+
+func (r *route) Name() string {
+	return r.name
+}
 
 func (r *route) Priority() int {
 	return r.priority
 }
 
-func (r *route) FindRoute(request *http.Request) (Route, bool) {
+func (r *route) findRouteByRequest(request *http.Request) (Route, bool) {
 	if request.URL == nil {
 		return nil, false
 	}
 
-	if !r.matchesDomain(request.URL) {
+	if !r.matchesHost(request.URL) {
 		return nil, false
 	}
 
@@ -51,8 +57,20 @@ func (r *route) FindRoute(request *http.Request) (Route, bool) {
 	return r, true
 }
 
-func (r *route) matchesDomain(requestURL *url.URL) bool {
-	return r.domain == "" || r.domain == requestURL.Host
+func (r *route) findRouteByName(name string) (Route, bool) {
+	if name == "" {
+		return nil, false
+	}
+
+	if r.name != name {
+		return nil, false
+	}
+
+	return r, true
+}
+
+func (r *route) matchesHost(requestURL *url.URL) bool {
+	return r.host == "" || r.host == requestURL.Host
 }
 
 func (r *route) matchesMethod(request *http.Request) bool {

@@ -1,23 +1,73 @@
 package router
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	pathLib "path"
 	"regexp"
+	"strings"
 )
+
+type routeFinder interface {
+	findRouteByRequest(request *http.Request) (Route, bool)
+	findRouteByName(name string) (Route, bool)
+}
 
 type routeGroup struct {
 	name          string
 	forwardRegexp *regexp.Regexp
 	reversePath   string
-	routes        []RouteFinder
+	routes        []routeFinder
 	factory       *factory
 }
 
 var _ RouteGroup = &routeGroup{}
+var _ routeFinder = &routeGroup{}
 
-func (g *routeGroup) FindRoute(request *http.Request) (Route, bool) {
+func (g *routeGroup) Name() string {
+	return g.name
+}
+
+func (g *routeGroup) AddRoute(name string, path string, action Action, options RouteOptions) error {
+	finalName := fmt.Sprintf("%s.%s", g.name, name)
+
+	if _, ok := g.findRouteByName(finalName); ok {
+		return fmt.Errorf(`route with name "%s" already exists`, finalName)
+	}
+
+	finalPath := pathLib.Join(g.reversePath, path)
+
+	route, err := g.factory.createRoute(finalName, finalPath, action, options)
+	if err != nil {
+		return err
+	}
+
+	g.routes = append(g.routes, route)
+
+	return nil
+}
+
+func (g *routeGroup) AddRouteGroup(name string, path string) (RouteGroup, error) {
+	finalName := fmt.Sprintf("%s.%s", g.name, name)
+
+	if _, ok := g.findRouteByName(finalName); ok {
+		return nil, fmt.Errorf(`route with name "%s" already exists`, finalName)
+	}
+
+	finalPath := pathLib.Join(g.reversePath, path)
+
+	group, err := g.factory.createRouteGroup(finalName, finalPath)
+	if err != nil {
+		return nil, err
+	}
+
+	g.routes = append(g.routes, group)
+
+	return group, nil
+}
+
+func (g *routeGroup) findRouteByRequest(request *http.Request) (Route, bool) {
 	if request.URL == nil {
 		return nil, false
 	}
@@ -29,7 +79,7 @@ func (g *routeGroup) FindRoute(request *http.Request) (Route, bool) {
 	var result Route
 
 	for _, r := range g.routes {
-		route, ok := r.FindRoute(request)
+		route, ok := r.findRouteByRequest(request)
 		if !ok {
 			continue
 		}
@@ -42,30 +92,27 @@ func (g *routeGroup) FindRoute(request *http.Request) (Route, bool) {
 	return result, result != nil
 }
 
-func (g *routeGroup) AddRoute(name string, path string, action Action, options RouteOptions) error {
-	final := pathLib.Join(g.reversePath, path)
-
-	route, err := g.factory.createRoute(name, final, action, options)
-	if err != nil {
-		return err
+func (g *routeGroup) findRouteByName(name string) (Route, bool) {
+	if name == "" {
+		return nil, false
 	}
 
-	g.routes = append(g.routes, route)
+	prefix := fmt.Sprintf("%s.", name)
 
-	return nil
-}
-
-func (g *routeGroup) AddRouteGroup(name string, path string) (RouteGroup, error) {
-	final := pathLib.Join(g.reversePath, path)
-
-	group, err := g.factory.createRouteGroup(name, final)
-	if err != nil {
-		return nil, err
+	if !strings.HasPrefix(name, prefix) {
+		return nil, false
 	}
 
-	g.routes = append(g.routes, group)
+	for _, r := range g.routes {
+		route, ok := r.findRouteByName(name)
+		if !ok {
+			continue
+		}
 
-	return group, nil
+		return route, true
+	}
+
+	return nil, false
 }
 
 func (g *routeGroup) matchesPath(requestURL *url.URL) bool {
