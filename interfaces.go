@@ -2,28 +2,21 @@ package router
 
 import (
 	"net/url"
-	"regexp"
 )
 
 type Action interface{}
-
-type ParamsRequirements map[string]*regexp.Regexp
-
-type ParamsValues map[string]string
 
 type RouteOptions struct {
 	Priority           int
 	Method             string
 	Domain             string
-	ParamsRequirements ParamsRequirements
-	DefaultParams      ParamsValues
+	ParamsRequirements map[string]string
+	DefaultParams      map[string]string
 }
 
 type URLMatcher interface {
-	MatchesURLAddress(address url.URL) bool
-	StartsWithURLAddress(address url.URL) bool
-	MatchStringAddress(address string) bool
-	StartsWithStringAddress(address string) bool
+	matchesURLAddress(address url.URL) bool
+	startsWithURLAddress(address url.URL) bool
 }
 
 type Route interface {
@@ -40,6 +33,6 @@ type Router interface {
 	RouteGroup
 	FindRouteForURLAddress(address url.URL) (Route, error)
 	FindRouteForStringAddress(address url.URL) (Route, error)
-	RelativeURL(name string, values ParamsValues) (*url.URL, error)
-	AbsoluteURL(name string, values ParamsValues) (*url.URL, error)
+	RelativeURL(name string, values map[string]string) (*url.URL, error)
+	AbsoluteURL(name string, values map[string]string) (*url.URL, error)
 }
