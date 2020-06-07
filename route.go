@@ -1,9 +1,9 @@
 package router
 
 import (
-	"fmt"
+	"net/http"
+	"net/url"
 	"regexp"
-	"strings"
 )
 
 type paramsList []string
@@ -25,110 +25,40 @@ type route struct {
 	defaultParams      paramsValues
 }
 
-type routeFactory struct {
-	paramRegexp   *regexp.Regexp
-	defaultRegexp *regexp.Regexp
+var _ Route = &route{}
+
+func (r *route) Priority() int {
+	return r.priority
 }
 
-func newRouteFactory() (*routeFactory, error) {
-	paramCompiled, err := regexp.Compile(`\{([a-z]+)\}`)
-	if err != nil {
-		return nil, err
+func (r *route) FindRoute(request *http.Request) (Route, bool) {
+	if request.URL == nil {
+		return nil, false
 	}
 
-	defaultCompiled, err := regexp.Compile(`(.+)`)
-	if err != nil {
-		return nil, err
+	if !r.matchesDomain(request.URL) {
+		return nil, false
 	}
 
-	return &routeFactory{
-		paramRegexp:   paramCompiled,
-		defaultRegexp: defaultCompiled,
-	}, nil
+	if !r.matchesMethod(request) {
+		return nil, false
+	}
+
+	if !r.matchesPath(request.URL) {
+		return nil, false
+	}
+
+	return r, true
 }
 
-func (f *routeFactory) create(name string, path string, action Action, options RouteOptions) (*route, error) {
-	required := f.createRequiredParams(path)
-	defaults := f.createDefaultParams(options.DefaultParams)
-
-	requirements, err := f.createParamsRequirements(name, required, options.ParamsRequirements)
-	if err != nil {
-		return nil, err
-	}
-
-	forward, err := f.createForwardRegexp(name, path, required, requirements)
-	if err != nil {
-		return nil, err
-	}
-
-	return &route{
-		name:               name,
-		action:             name,
-		priority:           options.Priority,
-		method:             options.Method,
-		domain:             options.Domain,
-		forwardRegexp:      forward,
-		reversePath:        path,
-		requiredParams:     required,
-		paramsRequirements: requirements,
-		defaultParams:      defaults,
-	}, nil
+func (r *route) matchesDomain(requestURL *url.URL) bool {
+	return r.domain == "" || r.domain == requestURL.Host
 }
 
-func (f *routeFactory) createParamsRequirements(name string, required paramsList, requirements map[string]string) (paramsRequirements, error) {
-	result := paramsRequirements{}
-
-	for _, key := range required {
-		result[key] = f.defaultRegexp
-
-		if requirements == nil {
-			continue
-		}
-
-		regexpString, ok := requirements[key]
-		if !ok {
-			continue
-		}
-
-		compiled, err := regexp.Compile(fmt.Sprintf("(%s)", regexpString))
-		if err != nil {
-			return nil, fmt.Errorf(`error while compiling regexp for param "%s" in route "%s": %w`, key, name, err)
-		}
-
-		result[key] = compiled
-	}
-
-	return result, nil
+func (r *route) matchesMethod(request *http.Request) bool {
+	return r.method == "" || r.method == request.Method
 }
 
-func (f *routeFactory) createForwardRegexp(name string, path string, required paramsList, requirements paramsRequirements) (*regexp.Regexp, error) {
-	forward := path
-
-	for _, key := range required {
-		compiled, ok := requirements[key]
-		if !ok {
-			compiled = f.defaultRegexp
-		}
-
-		wrapped := fmt.Sprintf("{%s}", key)
-		forward = strings.Replace(forward, wrapped, compiled.String(), 1)
-	}
-
-	result, err := regexp.Compile(forward)
-	if err != nil {
-		return nil, fmt.Errorf(`error while compiling regexp for path "%s" in route "%s": %w`, path, name, err)
-	}
-
-	return result, nil
-}
-
-func (f *routeFactory) createDefaultParams(defaults map[string]string) paramsValues {
-	if defaults == nil {
-		return paramsValues{}
-	}
-	return defaults
-}
-
-func (f *routeFactory) createRequiredParams(path string) paramsList {
-	return f.paramRegexp.FindAllString(path, -1)
+func (r *route) matchesPath(requestURL *url.URL) bool {
+	return len(r.forwardRegexp.FindAllStringSubmatch(requestURL.Path, 1)) == 1
 }
