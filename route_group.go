@@ -15,11 +15,15 @@ type routeFinder interface {
 }
 
 type routeGroup struct {
-	name          string
-	forwardRegexp *regexp.Regexp
-	reversePath   string
-	routes        []routeFinder
-	factory       *factory
+	name               string
+	secure             bool
+	host               string
+	forwardRegexp      *regexp.Regexp
+	reversePath        string
+	paramsRequirements paramsRequirements
+	defaultParams      paramsValues
+	routes             []routeFinder
+	factory            *factory
 }
 
 var _ RouteGroup = &routeGroup{}
@@ -30,13 +34,22 @@ func (g *routeGroup) Name() string {
 }
 
 func (g *routeGroup) AddRoute(name string, path string, action Action, options RouteOptions) error {
-	finalName := fmt.Sprintf("%s.%s", g.name, name)
+	finalName := fmt.Sprintf("%s%s", g.getPrefix(), name)
 
 	if _, ok := g.findRouteByName(finalName); ok {
 		return fmt.Errorf(`route with name "%s" already exists`, finalName)
 	}
 
 	finalPath := pathLib.Join(g.reversePath, path)
+
+	options.ParamsRequirements = g.paramsRequirements.toParamsMap().Extend(options.ParamsRequirements)
+	options.DefaultParams = g.defaultParams.toParamsMap().Extend(options.DefaultParams)
+	if g.secure {
+		options.Secure = true
+	}
+	if g.host != "" && options.Host == "" {
+		options.Host = g.host
+	}
 
 	route, err := g.factory.createRoute(finalName, finalPath, action, options)
 	if err != nil {
@@ -48,8 +61,8 @@ func (g *routeGroup) AddRoute(name string, path string, action Action, options R
 	return nil
 }
 
-func (g *routeGroup) AddRouteGroup(name string, path string) (RouteGroup, error) {
-	finalName := fmt.Sprintf("%s.%s", g.name, name)
+func (g *routeGroup) AddRouteGroup(name string, path string, options RouteGroupOptions) (RouteGroup, error) {
+	finalName := fmt.Sprintf("%s%s", g.getPrefix(), name)
 
 	if _, ok := g.findRouteByName(finalName); ok {
 		return nil, fmt.Errorf(`route with name "%s" already exists`, finalName)
@@ -57,7 +70,16 @@ func (g *routeGroup) AddRouteGroup(name string, path string) (RouteGroup, error)
 
 	finalPath := pathLib.Join(g.reversePath, path)
 
-	group, err := g.factory.createRouteGroup(finalName, finalPath)
+	options.ParamsRequirements = g.paramsRequirements.toParamsMap().Extend(options.ParamsRequirements)
+	options.DefaultParams = g.defaultParams.toParamsMap().Extend(options.DefaultParams)
+	if g.secure {
+		options.Secure = true
+	}
+	if g.host != "" && options.Host == "" {
+		options.Host = g.host
+	}
+
+	group, err := g.factory.createRouteGroup(finalName, finalPath, options)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +119,7 @@ func (g *routeGroup) findRouteByName(name string) (Route, bool) {
 		return nil, false
 	}
 
-	prefix := fmt.Sprintf("%s.", name)
+	prefix := g.getPrefix()
 
 	if !strings.HasPrefix(name, prefix) {
 		return nil, false
@@ -113,6 +135,14 @@ func (g *routeGroup) findRouteByName(name string) (Route, bool) {
 	}
 
 	return nil, false
+}
+
+func (g *routeGroup) getPrefix() string {
+	if g.name == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s.", g.name)
 }
 
 func (g *routeGroup) matchesPath(requestURL *url.URL) bool {

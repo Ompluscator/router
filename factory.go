@@ -47,8 +47,14 @@ func (f *factory) createRoute(name string, path string, action Action, options R
 	}, nil
 }
 
-func (f *factory) createRouteGroup(name string, path string) (*routeGroup, error) {
+func (f *factory) createRouteGroup(name string, path string, options RouteGroupOptions) (*routeGroup, error) {
 	required := f.createRequiredParams(path)
+	defaults := f.createDefaultParams(options.DefaultParams)
+
+	requirements, err := f.createParamsRequirements(name, required, options.ParamsRequirements)
+	if err != nil {
+		return nil, err
+	}
 
 	forward, err := f.createForwardRouteGroupRegexp(name, path, required)
 	if err != nil {
@@ -56,11 +62,15 @@ func (f *factory) createRouteGroup(name string, path string) (*routeGroup, error
 	}
 
 	return &routeGroup{
-		name:          name,
-		forwardRegexp: forward,
-		reversePath:   path,
-		routes:        []RouteFinder{},
-		factory:       f,
+		name:               name,
+		secure:             options.Secure,
+		host:               options.Host,
+		forwardRegexp:      forward,
+		reversePath:        path,
+		paramsRequirements: requirements,
+		defaultParams:      defaults,
+		routes:             []routeFinder{},
+		factory:            f,
 	}, nil
 }
 
