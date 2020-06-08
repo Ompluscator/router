@@ -33,7 +33,7 @@ func (g *routeGroup) Name() string {
 	return g.name
 }
 
-func (g *routeGroup) AddRoute(name string, path string, action Action, options RouteOptions) error {
+func (g *routeGroup) AddRoute(name string, path string, method string, action Action, options Options) error {
 	finalName := fmt.Sprintf("%s%s", g.getPrefix(), name)
 
 	if _, ok := g.findRouteByName(finalName); ok {
@@ -42,16 +42,9 @@ func (g *routeGroup) AddRoute(name string, path string, action Action, options R
 
 	finalPath := pathLib.Join(g.reversePath, path)
 
-	options.ParamsRequirements = g.paramsRequirements.toParamsMap().Extend(options.ParamsRequirements)
-	options.DefaultParams = g.defaultParams.toParamsMap().Extend(options.DefaultParams)
-	if g.secure {
-		options.Secure = true
-	}
-	if g.host != "" && options.Host == "" {
-		options.Host = g.host
-	}
+	options = g.getOptions(options)
 
-	route, err := g.factory.createRoute(finalName, finalPath, action, options)
+	route, err := g.factory.createRoute(finalName, finalPath, method, action, options)
 	if err != nil {
 		return err
 	}
@@ -61,7 +54,35 @@ func (g *routeGroup) AddRoute(name string, path string, action Action, options R
 	return nil
 }
 
-func (g *routeGroup) AddRouteGroup(name string, path string, options RouteGroupOptions) (RouteGroup, error) {
+func (g *routeGroup) AddDeleteRoute(name string, path string, action Action) error {
+	return g.AddRoute(name, path, http.MethodDelete, action, Options{})
+}
+
+func (g *routeGroup) AddGetRoute(name string, path string, action Action) error {
+	return g.AddRoute(name, path, http.MethodGet, action, Options{})
+}
+
+func (g *routeGroup) AddHeadRoute(name string, path string, action Action) error {
+	return g.AddRoute(name, path, http.MethodHead, action, Options{})
+}
+
+func (g *routeGroup) AddOptionsRoute(name string, path string, action Action) error {
+	return g.AddRoute(name, path, http.MethodOptions, action, Options{})
+}
+
+func (g *routeGroup) AddPatchRoute(name string, path string, action Action) error {
+	return g.AddRoute(name, path, http.MethodPatch, action, Options{})
+}
+
+func (g *routeGroup) AddPostRoute(name string, path string, action Action) error {
+	return g.AddRoute(name, path, http.MethodPost, action, Options{})
+}
+
+func (g *routeGroup) AddPutRoute(name string, path string, action Action) error {
+	return g.AddRoute(name, path, http.MethodPut, action, Options{})
+}
+
+func (g *routeGroup) AddRouteGroup(name string, path string, options Options) (RouteGroup, error) {
 	finalName := fmt.Sprintf("%s%s", g.getPrefix(), name)
 
 	if _, ok := g.findRouteByName(finalName); ok {
@@ -70,14 +91,7 @@ func (g *routeGroup) AddRouteGroup(name string, path string, options RouteGroupO
 
 	finalPath := pathLib.Join(g.reversePath, path)
 
-	options.ParamsRequirements = g.paramsRequirements.toParamsMap().Extend(options.ParamsRequirements)
-	options.DefaultParams = g.defaultParams.toParamsMap().Extend(options.DefaultParams)
-	if g.secure {
-		options.Secure = true
-	}
-	if g.host != "" && options.Host == "" {
-		options.Host = g.host
-	}
+	options = g.getOptions(options)
 
 	group, err := g.factory.createRouteGroup(finalName, finalPath, options)
 	if err != nil {
@@ -143,6 +157,18 @@ func (g *routeGroup) getPrefix() string {
 	}
 
 	return fmt.Sprintf("%s.", g.name)
+}
+
+func (g *routeGroup) getOptions(options Options) Options {
+	options.DefaultParams = g.defaultParams.toParamsMap().Extend(options.DefaultParams)
+	if g.secure {
+		options.Secure = true
+	}
+	if g.host != "" && options.Host == "" {
+		options.Host = g.host
+	}
+
+	return options
 }
 
 func (g *routeGroup) matchesPath(requestURL *url.URL) bool {

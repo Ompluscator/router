@@ -11,18 +11,27 @@ type factory struct {
 	requirement  *regexp.Regexp
 }
 
-func newFactory(paramMatcher *regexp.Regexp, requirement *regexp.Regexp) *factory {
+func newFactory(requirement *regexp.Regexp) *factory {
+	paramMatcher, err := regexp.Compile(`\{([a-z]+[\:]{0,1}[^\}]*)\}`)
+	if err != nil {
+		panic(err)
+	}
+
 	return &factory{
 		paramMatcher: paramMatcher,
 		requirement:  requirement,
 	}
 }
 
-func (f *factory) createRoute(name string, path string, action Action, options RouteOptions) (*route, error) {
-	required := f.createRequiredParams(path)
+func (f *factory) createRoute(name string, path string, method string, action Action, options Options) (*route, error) {
+	pairs, required, err := f.createParams(path)
+	if err != nil {
+		return nil, err
+	}
+
 	defaults := f.createDefaultParams(options.DefaultParams)
 
-	requirements, err := f.createParamsRequirements(name, required, options.ParamsRequirements)
+	requirements, err := f.createParamsRequirements(name, pairs)
 	if err != nil {
 		return nil, err
 	}
@@ -34,9 +43,9 @@ func (f *factory) createRoute(name string, path string, action Action, options R
 
 	return &route{
 		name:               name,
-		action:             name,
+		action:             action,
 		priority:           options.Priority,
-		method:             options.Method,
+		method:             method,
 		secure:             options.Secure,
 		host:               options.Host,
 		forwardRegexp:      forward,
@@ -49,11 +58,15 @@ func (f *factory) createRoute(name string, path string, action Action, options R
 	}, nil
 }
 
-func (f *factory) createRouteGroup(name string, path string, options RouteGroupOptions) (*routeGroup, error) {
-	required := f.createRequiredParams(path)
+func (f *factory) createRouteGroup(name string, path string, options Options) (*routeGroup, error) {
+	pairs, required, err := f.createParams(path)
+	if err != nil {
+		return nil, err
+	}
+
 	defaults := f.createDefaultParams(options.DefaultParams)
 
-	requirements, err := f.createParamsRequirements(name, required, options.ParamsRequirements)
+	requirements, err := f.createParamsRequirements(name, pairs)
 	if err != nil {
 		return nil, err
 	}
@@ -76,22 +89,11 @@ func (f *factory) createRouteGroup(name string, path string, options RouteGroupO
 	}, nil
 }
 
-func (f *factory) createParamsRequirements(name string, required paramsList, requirements map[string]string) (paramsRequirements, error) {
+func (f *factory) createParamsRequirements(name string, requirements map[string]string) (paramsRequirements, error) {
 	result := paramsRequirements{}
 
-	for _, key := range required {
-		result[key] = f.requirement
-
-		if requirements == nil {
-			continue
-		}
-
-		regexpString, ok := requirements[key]
-		if !ok {
-			continue
-		}
-
-		compiled, err := regexp.Compile(fmt.Sprintf("(%s)", regexpString))
+	for key, value := range requirements {
+		compiled, err := regexp.Compile(value)
 		if err != nil {
 			return nil, fmt.Errorf(`error while compiling regexp for param "%s" in route "%s": %w`, key, name, err)
 		}
@@ -149,6 +151,34 @@ func (f *factory) createDefaultParams(defaults map[string]string) paramsValues {
 	return defaults
 }
 
-func (f *factory) createRequiredParams(path string) paramsList {
-	return f.paramMatcher.FindAllString(path, -1)
+func (f *factory) createParams(path string) (ParamsMap, paramsList, error) {
+	paramMap := ParamsMap{}
+	var list paramsList
+
+	params := f.paramMatcher.FindAllStringSubmatch(path, -1)
+
+	for _, v := range params {
+		if len(v) != 2 {
+			return nil, nil, fmt.Errorf(`invlaid path provided: %s`, path)
+		}
+
+		matches := strings.Split(v[1], ":")
+		if len(matches) == 0 || matches[0] == "" {
+			return nil, nil, fmt.Errorf(`empty param is provided in path: %s`, path)
+		}
+
+		if _, ok := paramMap[matches[0]]; ok {
+			return nil, nil, fmt.Errorf(`param with name "%s" is provided mutiple times in path: %s`, matches[0], path)
+		}
+
+		requirement := f.requirement.String()
+		if len(matches) > 1 && matches[1] != "" {
+			requirement = fmt.Sprintf("(%s)", matches[1])
+		}
+
+		paramMap[matches[0]] = requirement
+		list = append(list, matches[0])
+	}
+
+	return paramMap, list, nil
 }

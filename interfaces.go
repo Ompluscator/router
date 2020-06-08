@@ -6,7 +6,6 @@ import (
 )
 
 const (
-	DefaultParamMatcher     = `\{([a-z]+)\}`
 	DefaultParamRequirement = `(.+)`
 )
 
@@ -32,20 +31,11 @@ func (p ParamsMap) Extend(other ParamsMap) ParamsMap {
 	return result
 }
 
-type RouteOptions struct {
-	Priority           int
-	Method             string
-	Secure             bool
-	Host               string
-	ParamsRequirements ParamsMap
-	DefaultParams      ParamsMap
-}
-
-type RouteGroupOptions struct {
-	Secure             bool
-	Host               string
-	ParamsRequirements ParamsMap
-	DefaultParams      ParamsMap
+type Options struct {
+	Priority      int
+	Secure        bool
+	Host          string
+	DefaultParams ParamsMap
 }
 
 type Route interface {
@@ -57,8 +47,15 @@ type Route interface {
 }
 
 type RouteGroup interface {
-	AddRoute(name string, path string, action Action, options RouteOptions) error
-	AddRouteGroup(name string, path string, options RouteGroupOptions) (RouteGroup, error)
+	AddRoute(name string, path string, method string, action Action, options Options) error
+	AddDeleteRoute(name string, path string, action Action) error
+	AddGetRoute(name string, path string, action Action) error
+	AddHeadRoute(name string, path string, action Action) error
+	AddOptionsRoute(name string, path string, action Action) error
+	AddPatchRoute(name string, path string, action Action) error
+	AddPostRoute(name string, path string, action Action) error
+	AddPutRoute(name string, path string, action Action) error
+	AddRouteGroup(name string, path string, options Options) (RouteGroup, error)
 }
 
 type Router interface {
