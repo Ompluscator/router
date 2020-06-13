@@ -6,30 +6,10 @@ import (
 )
 
 const (
-	DefaultParamRequirement = `(.+)`
+	DefaultParamRequirement = `([^\/]+)`
 )
 
 type Action interface{}
-
-type ParamsMap map[string]string
-
-func (p ParamsMap) Extend(other ParamsMap) ParamsMap {
-	result := ParamsMap{}
-
-	if p != nil {
-		for k, v := range p {
-			result[k] = v
-		}
-	}
-
-	if other != nil {
-		for k, v := range other {
-			result[k] = v
-		}
-	}
-
-	return result
-}
 
 type Options struct {
 	Priority      int
@@ -42,6 +22,7 @@ type Route interface {
 	Priority() int
 	Name() string
 	Path() string
+	Action() Action
 	URL(params ParamsMap) (*url.URL, error)
 	ExtractParams(request *http.Request) (ParamsMap, error)
 }
@@ -67,8 +48,7 @@ type Router interface {
 type Builder interface {
 	SetSecure(secure bool) Builder
 	SetHost(host string) Builder
-	SetParamMatcher(expr string) Builder
-	SetParamRequirement(expr string) Builder
+	SetDefaultParamRequirement(expr string) Builder
 	Build() (Router, error)
 }
 

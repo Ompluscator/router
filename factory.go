@@ -6,16 +6,15 @@ import (
 	"strings"
 )
 
+const defaultParamMatcher = `\{([a-z]+[\:]{0,1}[^\}]*)\}`
+
 type factory struct {
 	paramMatcher *regexp.Regexp
 	requirement  *regexp.Regexp
 }
 
 func newFactory(requirement *regexp.Regexp) *factory {
-	paramMatcher, err := regexp.Compile(`\{([a-z]+[\:]{0,1}[^\}]*)\}`)
-	if err != nil {
-		panic(err)
-	}
+	paramMatcher := regexp.MustCompile(defaultParamMatcher)
 
 	return &factory{
 		paramMatcher: paramMatcher,
@@ -53,7 +52,6 @@ func (f *factory) createRoute(name string, path string, method string, action Ac
 		requiredParams:     required,
 		paramsRequirements: requirements,
 		defaultParams:      defaults,
-		paramMatcher:       f.paramMatcher,
 		requirement:        f.requirement,
 	}, nil
 }
@@ -82,6 +80,7 @@ func (f *factory) createRouteGroup(name string, path string, options Options) (*
 		host:               options.Host,
 		forwardRegexp:      forward,
 		reversePath:        path,
+		originalPath:       path,
 		paramsRequirements: requirements,
 		defaultParams:      defaults,
 		routes:             []routeFinder{},
@@ -113,7 +112,7 @@ func (f *factory) createForwardRouteRegexp(name string, path string, required pa
 			compiled = f.requirement
 		}
 
-		wrapped := fmt.Sprintf("{%s}", key)
+		wrapped := fmt.Sprintf("{%s}", requirements[key].String())
 		forward = strings.Replace(forward, wrapped, compiled.String(), 1)
 	}
 

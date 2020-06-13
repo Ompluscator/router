@@ -20,6 +20,7 @@ type routeGroup struct {
 	host               string
 	forwardRegexp      *regexp.Regexp
 	reversePath        string
+	originalPath       string
 	paramsRequirements paramsRequirements
 	defaultParams      paramsValues
 	routes             []routeFinder
@@ -40,7 +41,7 @@ func (g *routeGroup) AddRoute(name string, path string, method string, action Ac
 		return fmt.Errorf(`route with name "%s" already exists`, finalName)
 	}
 
-	finalPath := pathLib.Join(g.reversePath, path)
+	finalPath := pathLib.Join(g.originalPath, path)
 
 	options = g.getOptions(options)
 
@@ -89,7 +90,7 @@ func (g *routeGroup) AddRouteGroup(name string, path string, options Options) (R
 		return nil, fmt.Errorf(`route with name "%s" already exists`, finalName)
 	}
 
-	finalPath := pathLib.Join(g.reversePath, path)
+	finalPath := pathLib.Join(g.originalPath, path)
 
 	options = g.getOptions(options)
 

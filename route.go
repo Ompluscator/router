@@ -9,36 +9,6 @@ import (
 	"strings"
 )
 
-type paramsList []string
-
-type paramsValues map[string]string
-
-func (p paramsValues) toParamsMap() ParamsMap {
-	result := ParamsMap{}
-
-	if p != nil {
-		for k, v := range p {
-			result[k] = v
-		}
-	}
-
-	return result
-}
-
-type paramsRequirements map[string]*regexp.Regexp
-
-func (p paramsRequirements) toParamsMap() ParamsMap {
-	result := ParamsMap{}
-
-	if p != nil {
-		for k, v := range p {
-			result[k] = v.String()
-		}
-	}
-
-	return result
-}
-
 type route struct {
 	name               string
 	action             Action
@@ -51,7 +21,6 @@ type route struct {
 	requiredParams     paramsList
 	paramsRequirements paramsRequirements
 	defaultParams      paramsValues
-	paramMatcher       *regexp.Regexp
 	requirement        *regexp.Regexp
 }
 
@@ -70,8 +39,17 @@ func (r *route) Path() string {
 	return r.reversePath
 }
 
+func (r *route) Action() Action {
+	return r.action
+}
+
 func (r *route) URL(params ParamsMap) (*url.URL, error) {
 	finalParams := r.defaultParams.toParamsMap().Extend(params)
+
+	err := r.checkParams(finalParams)
+	if err != nil {
+		return nil, err
+	}
 
 	path, err := r.buildPath(finalParams)
 	if err != nil {
@@ -95,14 +73,14 @@ func (r *route) ExtractParams(request *http.Request) (ParamsMap, error) {
 		return nil, errors.New("url is not provided")
 	}
 
-	matches := r.forwardRegexp.FindAllStringSubmatch(request.URL.Path, 1)
-	if len(matches) == 1 || len(matches[0]) != len(r.requiredParams) + 1 {
-		return nil, errors.New("url does not belong to route")
+	matches, err := r.getMatchesPath(request.URL)
+	if err != nil {
+		return nil, err
 	}
 
 	result := ParamsMap{}
 	for index, key := range r.requiredParams {
-		result[key] = matches[0][index + 1]
+		result[key] = matches[0][index+1]
 	}
 
 	return result, nil
@@ -111,15 +89,33 @@ func (r *route) ExtractParams(request *http.Request) (ParamsMap, error) {
 func (r *route) buildPath(params ParamsMap) (string, error) {
 	path := r.reversePath
 
-	for _, key := range r.requiredParams {
-		if _, ok := params[key]; ok {
+	for key, value := range params {
+		wrapped := fmt.Sprintf("{%s}", key)
+		if strings.Index(path, wrapped) == -1 {
 			continue
 		}
 
-		return "", fmt.Errorf(`param "%s" is not provided`, key)
+		path = strings.Replace(path, wrapped, value, 1)
 	}
 
-	for key, value := range params {
+	return path, nil
+}
+
+func (r *route) checkParams(params ParamsMap) error {
+	checked := map[string]bool{}
+
+	for _, key := range r.requiredParams {
+		checked[key] = true
+
+		if params == nil {
+			return fmt.Errorf(`param "%s" is not provided`, key)
+		}
+
+		value, ok := params[key]
+		if !ok {
+			return fmt.Errorf(`param "%s" is not provided`, key)
+		}
+
 		requirement, ok := r.paramsRequirements[key]
 		if !ok {
 			requirement = r.requirement
@@ -127,14 +123,27 @@ func (r *route) buildPath(params ParamsMap) (string, error) {
 
 		matches := requirement.FindAllString(value, 1)
 		if len(matches) == 0 || matches[0] != value {
-			return "", fmt.Errorf(`invalid format provided for param "%s"`, key)
+			return fmt.Errorf(`invalid format provided for param "%s"`, key)
 		}
-
-		wrapped := fmt.Sprintf("{%s}", key)
-		path = strings.Replace(path, wrapped, value, 1)
 	}
 
-	return path, nil
+	for key, compiled := range r.paramsRequirements {
+		if checked[key] {
+			continue
+		}
+
+		value, ok := params[key]
+		if !ok {
+			continue
+		}
+
+		matches := compiled.FindAllString(value, 1)
+		if len(matches) == 0 || matches[0] != value {
+			return fmt.Errorf(`invalid format provided for param "%s"`, key)
+		}
+	}
+
+	return nil
 }
 
 func (r *route) findRouteByRequest(request *http.Request) (Route, bool) {
@@ -178,5 +187,15 @@ func (r *route) matchesMethod(request *http.Request) bool {
 }
 
 func (r *route) matchesPath(requestURL *url.URL) bool {
-	return len(r.forwardRegexp.FindAllStringSubmatch(requestURL.Path, 1)) == 1
+	_, err := r.getMatchesPath(requestURL)
+	return err == nil
+}
+
+func (r *route) getMatchesPath(requestURL *url.URL) ([][]string, error) {
+	matches := r.forwardRegexp.FindAllStringSubmatch(requestURL.Path, 1)
+	if len(matches) != 1 || len(matches[0]) != len(r.requiredParams)+1 {
+		return nil, errors.New("url does not belong to route")
+	}
+
+	return matches, nil
 }
